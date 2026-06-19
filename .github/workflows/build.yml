@@ -1,93 +1,127 @@
-name: Build Wagnostic Libraries
+name: Build V8 (multi-platform)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
-    inputs:
-      wasmtime_version:
-        description: "Wasmtime C API version"
-        required: true
-        default: "30.0.1"
-      sdl_version:
-        description: "SDL2 version"
-        required: true
-        default: "2.30.9"
+  push:
+    paths:
+      - '.v8-version'
+      - '.github/workflows/build-v8.yml'
+
+env:
+  V8_REF: main  # troque para a tag/branch específica que você quer fixar
 
 jobs:
-  build:
-    name: "${{ matrix.platform }}"
+  build-v8:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux-x86_64
-            os: ubuntu-22.04
-          - platform: linux-i686
-            os: ubuntu-22.04
-          - platform: linux-aarch64
-            os: ubuntu-22.04
-          - platform: linux-armv7
-            os: ubuntu-22.04
-          - platform: macos-x86_64
-            os: macos-13
-          - platform: macos-arm64
-            os: macos-14
-          - platform: windows-x86_64
-            os: windows-2022
-          - platform: windows-i686
-            os: windows-2022
+          - os: ubuntu-latest
+            target_os: linux
+            target_cpu: x64
+          - os: ubuntu-latest
+            target_os: linux
+            target_cpu: x86
+          - os: ubuntu-latest
+            target_os: linux
+            target_cpu: arm
+          - os: ubuntu-latest
+            target_os: linux
+            target_cpu: arm64
+          - os: windows-latest
+            target_os: win
+            target_cpu: x64
+          - os: windows-latest
+            target_os: win
+            target_cpu: x86
+          - os: macos-13
+            target_os: mac
+            target_cpu: x64
+          - os: macos-latest
+            target_os: mac
+            target_cpu: arm64
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Cache depot_tools + V8 checkout
+        uses: actions/cache@v4
+        id: v8-src-cache
+        with:
+          path: |
+            depot_tools
+            v8
+          key: v8-src-${{ env.V8_REF }}
 
-      - name: Install system deps
+      - name: Fetch V8 source
+        if: steps.v8-src-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          case "${{ matrix.platform }}" in
-            linux-*) sudo apt-get update -qq && sudo apt-get install -y -qq zip curl ca-certificates ;;
-            macos-*) brew install zip curl ca-certificates 2>/dev/null || true ;;
-            windows-*) choco install zip 2>/dev/null || true ;;
-          esac
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          export PATH="$PWD/depot_tools:$PATH"
+          fetch v8
+          cd v8
+          git checkout "${{ env.V8_REF }}"
+          gclient sync
 
-      - name: Build libraries
+      - name: Cache build output
+        uses: actions/cache@v4
+        id: v8-build-cache
+        with:
+          path: v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}
+          key: v8-build-${{ env.V8_REF }}-${{ matrix.target_os }}-${{ matrix.target_cpu }}
+
+      - name: Install Linux cross sysroot
+        if: matrix.target_os == 'linux' && steps.v8-build-cache.outputs.cache-hit != 'true'
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd v8
+          python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.target_cpu }}
+
+      - name: Generate build files
+        if: steps.v8-build-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          chmod +x build.sh
-          mkdir -p build-output
-          ./build.sh "${{ matrix.platform }}" build-output
+          export PATH="$PWD/depot_tools:$PATH"
+          cd v8
+          gn gen out/${{ matrix.target_os }}-${{ matrix.target_cpu }} --args='
+            target_os="${{ matrix.target_os }}"
+            target_cpu="${{ matrix.target_cpu }}"
+            is_debug=false
+            v8_monolithic=true
+            v8_static_library=true
+            is_component_build=false
+            v8_use_external_startup_data=false
+            v8_enable_i18n_support=false
+            v8_enable_inspector=false
+            v8_enable_disassembler=false
+            v8_enable_gdbjit=false
+            v8_enable_webassembly=true
+            use_custom_libcxx=false
+          '
+
+      - name: Build v8_monolith
+        if: steps.v8-build-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd v8
+          ninja -C out/${{ matrix.target_os }}-${{ matrix.target_cpu }} v8_monolith
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          mkdir -p dist/include
+          cp -r v8/include/* dist/include/
+          if [ "${{ matrix.target_os }}" = "win" ]; then
+            cp v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}/obj/v8_monolith.lib dist/ || true
+          else
+            cp v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}/obj/libv8_monolith.a dist/ || true
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wagnostic-libs-${{ matrix.platform }}
-          path: build-output/wagnostic-libs-${{ matrix.platform }}.zip
-          if-no-files-found: error
-
-  publish:
-    needs: build
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Upload to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*.zip
-
-      - name: Summary
-        run: |
-          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Platform | Size |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          for f in artifacts/*/wagnostic-libs-*.zip; do
-            name=$(basename "$f" .zip | sed 's/wagnostic-libs-//')
-            size=$(du -h "$f" | cut -f1)
-            echo "| $name | $size |" >> $GITHUB_STEP_SUMMARY
-          done
+          name: v8-${{ matrix.target_os }}-${{ matrix.target_cpu }}
+          path: dist/
+          retention-days: 30
