@@ -44,6 +44,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Disable Git autocrlf (evita corromper o .digests do depot_tools no Windows)
+        shell: bash
+        run: git config --global core.autocrlf false
+
       - name: Cache depot_tools + V8 checkout
         uses: actions/cache@v4
         id: v8-src-cache
@@ -51,13 +55,13 @@ jobs:
           path: |
             depot_tools
             v8
-          key: v8-src-${{ env.V8_REF }}
+          key: v8-src-${{ runner.os }}-${{ env.V8_REF }}
 
       - name: Fetch V8 source
         if: steps.v8-src-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          git clone -c core.autocrlf=false https://chromium.googlesource.com/chromium/tools/depot_tools.git
           export PATH="$PWD/depot_tools:$PATH"
           fetch v8
           cd v8
@@ -69,7 +73,7 @@ jobs:
         id: v8-build-cache
         with:
           path: v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}
-          key: v8-build-${{ env.V8_REF }}-${{ matrix.target_os }}-${{ matrix.target_cpu }}
+          key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.target_os }}-${{ matrix.target_cpu }}
 
       - name: Install Linux cross sysroot
         if: matrix.target_os == 'linux' && steps.v8-build-cache.outputs.cache-hit != 'true'
@@ -97,7 +101,7 @@ jobs:
             v8_enable_disassembler=false
             v8_enable_gdbjit=false
             v8_enable_webassembly=true
-            use_custom_libcxx=false
+            v8_enable_sandbox=false
           '
 
       - name: Build v8_monolith
