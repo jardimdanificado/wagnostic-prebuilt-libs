@@ -1,4 +1,4 @@
-# libv8 github actions workflow
+# libv8
 
 grab a pre-compiled binary from releases OR run the github actions workflow and grab the artifacts once its finished.
 

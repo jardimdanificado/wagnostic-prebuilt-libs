@@ -8,9 +8,9 @@ on:
       - '.github/workflows/build-v8.yml'
 
 env:
-  V8_REF: 15.1.154
+  V8_REF: 15,1.154
   DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
-  BUILD_CACHE_VERSION: "2"  
+  BUILD_CACHE_VERSION: "2"
 
 jobs:
   build-v8:
@@ -198,21 +198,36 @@ jobs:
           $env:PATH = "$PWD\depot_tools;$env:PATH"
           Set-Location v8
 
-          $BaseArgs = 'target_os="${{ matrix.combo.target_os }}" target_cpu="${{ matrix.combo.target_cpu }}" v8_monolithic=true v8_static_library=true is_component_build=false v8_use_external_startup_data=false v8_enable_webassembly=true v8_enable_sandbox=false use_thin_archives=false'
+          $OutDir = "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}"
+          New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+          $BaseArgs = @(
+            'target_os="${{ matrix.combo.target_os }}"',
+            'target_cpu="${{ matrix.combo.target_cpu }}"',
+            'v8_monolithic=true',
+            'v8_static_library=true',
+            'is_component_build=false',
+            'v8_use_external_startup_data=false',
+            'v8_enable_webassembly=true',
+            'v8_enable_sandbox=false',
+            'use_thin_archives=false'
+          )
 
           switch ("${{ matrix.flavor }}") {
             "full" {
-              $FlavorArgs = 'is_debug=false v8_enable_i18n_support=true v8_enable_inspector=true v8_enable_disassembler=true v8_enable_gdbjit=true'
+              $FlavorArgs = @('is_debug=false','v8_enable_i18n_support=true','v8_enable_inspector=true','v8_enable_disassembler=true','v8_enable_gdbjit=true')
             }
             "stripped" {
-              $FlavorArgs = 'is_debug=false v8_enable_i18n_support=false v8_enable_inspector=false v8_enable_disassembler=false v8_enable_gdbjit=false symbol_level=0'
+              $FlavorArgs = @('is_debug=false','v8_enable_i18n_support=false','v8_enable_inspector=false','v8_enable_disassembler=false','v8_enable_gdbjit=false','symbol_level=0')
             }
             "debug" {
-              $FlavorArgs = 'is_debug=true v8_enable_i18n_support=true v8_enable_inspector=true v8_enable_disassembler=true v8_enable_gdbjit=true symbol_level=2'
+              $FlavorArgs = @('is_debug=true','v8_enable_i18n_support=true','v8_enable_inspector=true','v8_enable_disassembler=true','v8_enable_gdbjit=true','symbol_level=2')
             }
           }
 
-          gn gen "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}" --args="$BaseArgs $FlavorArgs"
+          ($BaseArgs + $FlavorArgs) -join "`n" | Set-Content -Path "$OutDir/args.gn" -Encoding ascii
+
+          gn gen $OutDir
 
       - name: "[win] Build v8_monolith"
         if: runner.os == 'Windows' && steps.v8-build-cache.outputs.cache-hit != 'true'
