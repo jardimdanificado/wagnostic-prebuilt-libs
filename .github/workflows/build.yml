@@ -46,21 +46,42 @@ jobs:
     steps:
       - name: Disable Git autocrlf (evita corromper o .digests do depot_tools no Windows)
         shell: bash
-        run: git config --global core.autocrlf false
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+            -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+
+      - name: Set working directory
+        id: workdir
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            mkdir -p /d/v8work
+            echo "dir=D:/v8work" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=${{ github.workspace }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cache depot_tools + V8 checkout
         uses: actions/cache@v4
         id: v8-src-cache
         with:
           path: |
-            depot_tools
-            v8
+            ${{ steps.workdir.outputs.dir }}/depot_tools
+            ${{ steps.workdir.outputs.dir }}/v8
           key: v8-src-${{ runner.os }}-${{ env.V8_REF }}
 
       - name: Fetch V8 source
         if: steps.v8-src-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          cd "${{ steps.workdir.outputs.dir }}"
           git clone -c core.autocrlf=false https://chromium.googlesource.com/chromium/tools/depot_tools.git
           export PATH="$PWD/depot_tools:$PATH"
           fetch v8
@@ -72,12 +93,13 @@ jobs:
         uses: actions/cache@v4
         id: v8-build-cache
         with:
-          path: v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}
+          path: ${{ steps.workdir.outputs.dir }}/v8/out/${{ matrix.target_os }}-${{ matrix.target_cpu }}
           key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.target_os }}-${{ matrix.target_cpu }}
 
       - name: Install Linux cross sysroot
         if: matrix.target_os == 'linux' && steps.v8-build-cache.outputs.cache-hit != 'true'
         run: |
+          cd "${{ steps.workdir.outputs.dir }}"
           export PATH="$PWD/depot_tools:$PATH"
           cd v8
           python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.target_cpu }}
@@ -86,6 +108,7 @@ jobs:
         if: steps.v8-build-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          cd "${{ steps.workdir.outputs.dir }}"
           export PATH="$PWD/depot_tools:$PATH"
           cd v8
           gn gen out/${{ matrix.target_os }}-${{ matrix.target_cpu }} --args='
@@ -108,6 +131,7 @@ jobs:
         if: steps.v8-build-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          cd "${{ steps.workdir.outputs.dir }}"
           export PATH="$PWD/depot_tools:$PATH"
           cd v8
           ninja -C out/${{ matrix.target_os }}-${{ matrix.target_cpu }} v8_monolith
@@ -115,6 +139,7 @@ jobs:
       - name: Package artifact
         shell: bash
         run: |
+          cd "${{ steps.workdir.outputs.dir }}"
           mkdir -p dist/include
           cp -r v8/include/* dist/include/
           if [ "${{ matrix.target_os }}" = "win" ]; then
@@ -127,5 +152,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v8-${{ matrix.target_os }}-${{ matrix.target_cpu }}
-          path: dist/
+          path: ${{ steps.workdir.outputs.dir }}/dist/
           retention-days: 30
