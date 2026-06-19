@@ -55,9 +55,9 @@ jobs:
       - name: Build libraries
         shell: bash
         run: |
-          chmod +x build-libs/build.sh
+          chmod +x build.sh
           mkdir -p build-output
-          ./build-libs/build.sh "${{ matrix.platform }}" build-output
+          ./build.sh "${{ matrix.platform }}" build-output
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

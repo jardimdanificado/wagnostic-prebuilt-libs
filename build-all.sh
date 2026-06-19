@@ -43,26 +43,26 @@ for platform in "${PLATFORMS[@]}"; do
             # 32-bit cross
             docker run --rm -v "$(pwd):/build" -w /build \
                 multiarch/ubuntu-debootstrap:i386-jammy \
-                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build-libs/build.sh linux-i686 /build/build-output" \
+                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build.sh linux-i686 /build/build-output" \
                 2>&1 | tail -5 || echo "  ⚠ Cross-build failed for $platform"
             ;;
         linux-aarch64)
             docker run --rm -v "$(pwd):/build" -w /build \
                 multiarch/ubuntu-debootstrap:arm64-jammy \
-                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build-libs/build.sh linux-aarch64 /build/build-output" \
+                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build.sh linux-aarch64 /build/build-output" \
                 2>&1 | tail -5 || echo "  ⚠ Cross-build failed for $platform"
             ;;
         linux-armv7)
             docker run --rm -v "$(pwd):/build" -w /build \
                 multiarch/ubuntu-debootstrap:armhf-jammy \
-                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build-libs/build.sh linux-armv7 /build/build-output" \
+                bash -c "apt-get update -qq && apt-get install -y -qq curl zip ca-certificates gcc libc6-dev && bash build.sh linux-armv7 /build/build-output" \
                 2>&1 | tail -5 || echo "  ⚠ Cross-build failed for $platform"
             ;;
         windows-x86_64 | windows-i686)
             # Windows cross via mingw
             docker run --rm -v "$(pwd):/build" -w /build \
                 archlinux:latest \
-                bash -c "pacman -Sy --noconfirm curl zip ca-certificates mingw-w64-gcc && bash build-libs/build.sh $platform /build/build-output" \
+                bash -c "pacman -Sy --noconfirm curl zip ca-certificates mingw-w64-gcc && bash build.sh $platform /build/build-output" \
                 2>&1 | tail -5 || echo "  ⚠ Cross-build failed for $platform"
             ;;
         macos-*)

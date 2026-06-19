@@ -1,13 +1,18 @@
 # Wagnostic - Build Runtime Dependencies
 
-This directory contains scripts and workflows to build all third-party
+This repository contains scripts and workflows to build all third-party
 runtime libraries needed by Wagnostic runners across multiple platforms.
 
-## Repository Setup
+## Repository Structure
 
-Copy this `build-libs/` directory to a **separate repository** that will
-host the prebuilt dependency archives. The workflow defined in
-`.github/workflows/build.yml` handles building and publishing.
+```
+wagnostic-prebuilt-libs/
+├── build.sh              # Main build script for a single platform
+├── build-all.sh          # Build all platforms (requires Docker)
+├── .github/workflows/
+│   └── build.yml         # GitHub Actions workflow
+└── README.md
+```
 
 ### Required repository secrets
 
@@ -26,7 +31,7 @@ The workflow runs a matrix build across 8 platform/architecture targets:
 | macOS x86_64 | macos-13 | Intel Mac | ✅ wasmtime, V8 |
 | macOS arm64 | macos-14 | Apple Silicon | ✅ wasmtime, V8 |
 | Windows x86_64 | windows-2022 | 64-bit | ✅ wasmtime, V8 |
-| Windows i686 | windows-2022 | 32-bit | ⚠️ wasmtime not available |
+| Windows i686 | windows-2022 (Docker) | 32-bit | ⚠️ wasmtime not available |
 
 Each build produces a `wagnostic-libs-<platform>.zip` containing:
 
@@ -46,6 +51,30 @@ wagnostic-libs-<platform>.zip
     └── lib/              # libwasm3.a (compiled from source)
 ```
 
+## Usage
+
+### Build single platform
+
+```bash
+./build.sh <platform> [output_dir]
+
+# Examples:
+./build.sh linux-x86_64
+./build.sh macos-arm64 build-output
+```
+
+### Build all platforms (requires Docker)
+
+```bash
+./build-all.sh [output_dir]
+```
+
+### GitHub Actions
+
+The workflow triggers on:
+- New releases
+- Manual dispatch (with version inputs)
+
 ## Dependencies
 
 | Library | Source | Build method |
@@ -54,3 +83,29 @@ wagnostic-libs-<platform>.zip
 | **V8** | https://chromium.googlesource.com/v8/v8 | **Compiled from source** via depot_tools + gn + ninja |
 | **SDL2** | https://github.com/libsdl-org/SDL/releases | Prebuilt download |
 | **wasm3** | https://github.com/wasm3/wasm3 | **Compiled from source** via cmake |
+
+## Integration with Wagnostic
+
+After building, extract the archives to `examples/runners/lib/`:
+
+```bash
+unzip wagnostic-libs-linux-x86_64.zip -d examples/runners/lib/
+```
+
+This creates the expected structure:
+```
+examples/runners/lib/
+├── wasmtime/
+├── v8/
+├── sdl2/
+└── wasm3/
+```
+
+Then build the runners:
+
+```bash
+cd examples
+make host              # wasm3 (portable)
+make host-wasmtime     # Wasmtime + OpenGL
+make host-v8           # V8 + OpenGL
+```
