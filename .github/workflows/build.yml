@@ -8,7 +8,9 @@ on:
       - '.github/workflows/build-v8.yml'
 
 env:
-  V8_REF: 15.1.154  # troque para a tag/branch específica que você quer fixar
+  V8_REF: 15.1.154
+  DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+  BUILD_CACHE_VERSION: "2"  
 
 jobs:
   build-v8:
@@ -70,7 +72,7 @@ jobs:
         id: v8-build-cache
         with:
           path: ${{ steps.workdir.outputs.dir }}/v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}
-          key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}
+          key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}-v${{ env.BUILD_CACHE_VERSION }}
 
       # ---------------------------------------------------------------
       # Linux / macOS (bash)
@@ -113,6 +115,7 @@ jobs:
             v8_use_external_startup_data=false
             v8_enable_webassembly=true
             v8_enable_sandbox=false
+            use_thin_archives=false
           '
 
           case "${{ matrix.flavor }}" in
@@ -195,7 +198,7 @@ jobs:
           $env:PATH = "$PWD\depot_tools;$env:PATH"
           Set-Location v8
 
-          $BaseArgs = 'target_os="${{ matrix.combo.target_os }}" target_cpu="${{ matrix.combo.target_cpu }}" v8_monolithic=true v8_static_library=true is_component_build=false v8_use_external_startup_data=false v8_enable_webassembly=true v8_enable_sandbox=false'
+          $BaseArgs = 'target_os="${{ matrix.combo.target_os }}" target_cpu="${{ matrix.combo.target_cpu }}" v8_monolithic=true v8_static_library=true is_component_build=false v8_use_external_startup_data=false v8_enable_webassembly=true v8_enable_sandbox=false use_thin_archives=false'
 
           switch ("${{ matrix.flavor }}") {
             "full" {
