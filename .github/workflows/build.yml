@@ -17,7 +17,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [full, stripped, debug]
         combo:
           - { os: ubuntu-latest,     target_os: linux, target_cpu: x64 }
           - { os: ubuntu-latest,     target_os: linux, target_cpu: x86 }
@@ -71,8 +70,8 @@ jobs:
         uses: actions/cache@v4
         id: v8-build-cache
         with:
-          path: ${{ steps.workdir.outputs.dir }}/v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}
-          key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}-v${{ env.BUILD_CACHE_VERSION }}
+          path: ${{ steps.workdir.outputs.dir }}/v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}
+          key: v8-build-${{ runner.os }}-${{ env.V8_REF }}-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-v${{ env.BUILD_CACHE_VERSION }}
 
       # ---------------------------------------------------------------
       # Linux / macOS (bash)
@@ -115,42 +114,15 @@ jobs:
             v8_enable_webassembly=true
             v8_enable_sandbox=false
             use_custom_libcxx=true
+            is_debug=false
+            v8_enable_i18n_support=true
+            v8_enable_inspector=true
+            v8_enable_disassembler=true
+            v8_enable_gdbjit=true
           '
 
-          case "${{ matrix.flavor }}" in
-            full)
-              FLAVOR_ARGS='
-                is_debug=false
-                v8_enable_i18n_support=true
-                v8_enable_inspector=true
-                v8_enable_disassembler=true
-                v8_enable_gdbjit=true
-              '
-              ;;
-            stripped)
-              FLAVOR_ARGS='
-                is_debug=false
-                v8_enable_i18n_support=false
-                v8_enable_inspector=false
-                v8_enable_disassembler=false
-                v8_enable_gdbjit=false
-                symbol_level=0
-              '
-              ;;
-            debug)
-              FLAVOR_ARGS='
-                is_debug=true
-                v8_enable_i18n_support=true
-                v8_enable_inspector=true
-                v8_enable_disassembler=true
-                v8_enable_gdbjit=true
-                symbol_level=2
-              '
-              ;;
-          esac
-
-          gn gen "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}" \
-            --args="$BASE_ARGS $FLAVOR_ARGS"
+          gn gen "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}" \
+            --args="$BASE_ARGS"
 
       - name: "[unix] Build v8 shared"
         if: runner.os != 'Windows' && steps.v8-build-cache.outputs.cache-hit != 'true'
@@ -159,23 +131,18 @@ jobs:
           cd "${{ steps.workdir.outputs.dir }}"
           export PATH="$PWD/depot_tools:$PATH"
           cd v8
-          ninja -C "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}" v8
+          ninja -C "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}" v8
 
       - name: "[unix] Package artifact"
         if: runner.os != 'Windows'
         shell: bash
         run: |
           cd "${{ steps.workdir.outputs.dir }}"
-          OUT_DIR="v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}"
+          OUT_DIR="v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}"
           mkdir -p dist/include dist/lib
           cp -r v8/include/* dist/include/
           # Copy all .so files
           find "$OUT_DIR" -name "*.so" -exec cp {} dist/lib/ \;
-          if [ "${{ matrix.flavor }}" != "debug" ]; then
-            for f in dist/lib/*.so; do
-              strip --strip-debug "$f" 2>/dev/null || true
-            done
-          fi
 
       # ---------------------------------------------------------------
       # Windows (PowerShell — depot_tools não é suportado via Git Bash)
@@ -200,7 +167,7 @@ jobs:
           $env:PATH = "$PWD\depot_tools;$env:PATH"
           Set-Location v8
 
-          $OutDir = "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}"
+          $OutDir = "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}"
           New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
           $BaseArgs = @(
@@ -211,22 +178,15 @@ jobs:
             'v8_use_external_startup_data=false',
             'v8_enable_webassembly=true',
             'v8_enable_sandbox=false',
-            'use_custom_libcxx=true'
+            'use_custom_libcxx=true',
+            'is_debug=false',
+            'v8_enable_i18n_support=true',
+            'v8_enable_inspector=true',
+            'v8_enable_disassembler=true',
+            'v8_enable_gdbjit=true'
           )
 
-          switch ("${{ matrix.flavor }}") {
-            "full" {
-              $FlavorArgs = @('is_debug=false','v8_enable_i18n_support=true','v8_enable_inspector=true','v8_enable_disassembler=true','v8_enable_gdbjit=true')
-            }
-            "stripped" {
-              $FlavorArgs = @('is_debug=false','v8_enable_i18n_support=false','v8_enable_inspector=false','v8_enable_disassembler=false','v8_enable_gdbjit=false','symbol_level=0')
-            }
-            "debug" {
-              $FlavorArgs = @('is_debug=true','v8_enable_i18n_support=true','v8_enable_inspector=true','v8_enable_disassembler=true','v8_enable_gdbjit=true','symbol_level=2')
-            }
-          }
-
-          ($BaseArgs + $FlavorArgs) -join "`n" | Set-Content -Path "$OutDir/args.gn" -Encoding ascii
+          $BaseArgs -join "`n" | Set-Content -Path "$OutDir/args.gn" -Encoding ascii
 
           gn gen $OutDir
 
@@ -237,14 +197,14 @@ jobs:
           Set-Location "${{ steps.workdir.outputs.dir }}"
           $env:PATH = "$PWD\depot_tools;$env:PATH"
           Set-Location v8
-          ninja -C "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}" v8
+          ninja -C "out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}" v8
 
       - name: "[win] Package artifact"
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           Set-Location "${{ steps.workdir.outputs.dir }}"
-          $OutDir = "v8\out\${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}"
+          $OutDir = "v8\out\${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}"
           New-Item -ItemType Directory -Force -Path dist\include | Out-Null
           New-Item -ItemType Directory -Force -Path dist\lib | Out-Null
           Copy-Item -Recurse -Force v8\include\* dist\include\
@@ -255,6 +215,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v8-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}-${{ matrix.flavor }}
+          name: v8-${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}
           path: ${{ steps.workdir.outputs.dir }}/dist/
           retention-days: 30
