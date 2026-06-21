@@ -113,7 +113,7 @@ jobs:
             v8_use_external_startup_data=false
             v8_enable_webassembly=true
             v8_enable_sandbox=false
-            use_custom_libcxx=true
+            use_custom_libcxx=false
             is_debug=false
             v8_enable_i18n_support=true
             v8_enable_inspector=true
@@ -139,8 +139,14 @@ jobs:
         run: |
           cd "${{ steps.workdir.outputs.dir }}"
           OUT_DIR="v8/out/${{ matrix.combo.target_os }}-${{ matrix.combo.target_cpu }}"
-          mkdir -p dist/include dist/lib
+          mkdir -p dist/include dist/lib dist/include/c++/v1
           cp -r v8/include/* dist/include/
+          
+          # Copy libc++ headers from Chromium
+          if [ -d "v8/buildtools/third_party/libc++/trunk/include" ]; then
+            cp -r v8/buildtools/third_party/libc++/trunk/include/* dist/include/c++/v1/
+          fi
+          
           # Copy all .so files
           find "$OUT_DIR" -name "*.so" -exec cp {} dist/lib/ \;
 
@@ -178,7 +184,7 @@ jobs:
             'v8_use_external_startup_data=false',
             'v8_enable_webassembly=true',
             'v8_enable_sandbox=false',
-            'use_custom_libcxx=true',
+            'use_custom_libcxx=false',
             'is_debug=false',
             'v8_enable_i18n_support=true',
             'v8_enable_inspector=true',
